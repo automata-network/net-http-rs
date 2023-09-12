@@ -8,6 +8,7 @@ use gsrs::*;
 use http_req::request::RequestBuilder;
 pub use http_req::response::StatusCode;
 use http_req::response::{find_slice, Headers};
+use net::StreamTrait;
 use std::io::ErrorKind;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -206,7 +207,7 @@ impl<'a> HttpRequestReaderEx<'a> {
         max_body: Option<usize>,
     ) -> Result<Option<HttpRequestReaderEx<'a>>, HttpError>
     where
-        R: std::io::Read,
+        R: StreamTrait,
     {
         loop {
             match state {
