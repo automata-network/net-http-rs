@@ -5,7 +5,7 @@ use core::ops::BitOrAssign;
 use rustls::ServerConfig;
 use std::collections::BTreeMap;
 use std::io::ErrorKind;
-use std::net::TcpListener;
+use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
 // use crate::prometheus::CollectorRegistry;
 // use crate::websocket_stream::{WsDataType, WsError, WsStreamServer};
@@ -22,6 +22,7 @@ pub struct HttpServerConfig {
 pub struct HttpServerContext {
     pub conn_id: usize,
     pub is_close: bool,
+    pub peer_addr: Option<SocketAddr>,
 }
 
 pub trait HttpServerHandler {
@@ -164,6 +165,7 @@ impl<H: HttpServerHandler> HttpServer<H> {
                     let mut ctx = HttpServerContext {
                         conn_id: *conn_id,
                         is_close: false,
+                        peer_addr: conn.peer_addr().ok(),
                     };
                     self.handler.on_new_http_request(&mut ctx, http_req);
                     if ctx.is_close {

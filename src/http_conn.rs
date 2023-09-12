@@ -7,7 +7,7 @@ use bytes::{BufferVec, IOError, WriteBuffer};
 use net::*;
 use rustls::ServerConfig;
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -95,6 +95,10 @@ impl<T> HttpConn<T> {
             request_cnt: 0,
             closed: false,
         }
+    }
+
+    pub fn peer_addr(&self) -> std::io::Result<SocketAddr> {
+        self.stream.peer_addr()
     }
 
     pub fn try_close(&mut self) {

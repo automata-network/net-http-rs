@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, prelude::v1::*};
+use std::prelude::v1::*;
 
 use http_req;
 
@@ -75,7 +75,6 @@ pub struct HttpRequestReaderEx<'a> {
     path: Option<String>,
     method: HttpMethod,
     request_size: usize,
-    peer_ip: Option<SocketAddr>,
 }
 
 pub type HttpRequestReader = HttpRequestReaderEx<'static>;
@@ -127,14 +126,13 @@ impl HttpResponseReadState {
 }
 
 impl<'a> HttpRequestReaderEx<'a> {
-    pub fn new(buf: Vec<u8>, peer_ip: Option<SocketAddr>) -> Result<Option<Self>, HttpError> {
+    pub fn new(buf: Vec<u8>) -> Result<Option<Self>, HttpError> {
         let request_size = buf.len();
         let mut reader = Self {
             srs: SRS::new(buf),
             method: HttpMethod::Get,
             path: None,
             request_size,
-            peer_ip,
         };
         let (method, path, status) = reader.srs.with(|user, owner| {
             std::mem::swap(&mut user.headers, &mut vec![httparse::EMPTY_HEADER; 64]);
@@ -202,10 +200,6 @@ impl<'a> HttpRequestReaderEx<'a> {
         self.srs.get_ref(|user, _| user.body)
     }
 
-    pub fn peer_ip(&self) -> Option<&SocketAddr> {
-        self.peer_ip.as_ref()
-    }
-
     pub fn read_from<R>(
         stream: &mut R,
         header_buffer: &mut BufferVec,
@@ -227,10 +221,7 @@ impl<'a> HttpRequestReaderEx<'a> {
                                     return Err(HttpError::BodyTooLarge);
                                 }
                                 if let Some(buf) = header_buffer.read_n(length) {
-                                    let req = match Self::new(
-                                        buf.to_vec(),
-                                        stream.peer_addr().ok(),
-                                    )? {
+                                    let req = match Self::new(buf.to_vec())? {
                                         Some(req) => req,
                                         None => {
                                             glog::error!("should panic, can't read request from buffer: {:?}", String::from_utf8_lossy(buf));
@@ -272,8 +263,7 @@ impl<'a> HttpRequestReaderEx<'a> {
                             buf.advance(incoming_bytes);
                             if buf.write().len() == 0 {
                                 let buf = state.take_buffer().unwrap();
-                                let req =
-                                    Self::new(buf.to_vec(), stream.peer_addr().ok())?.unwrap();
+                                let req = Self::new(buf.to_vec())?.unwrap();
                                 return Ok(Some(req));
                             }
                             continue;
