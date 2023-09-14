@@ -62,6 +62,12 @@ impl HttpServerConns {
             None => Ok(()),
         }
     }
+
+    pub fn close_conn(&mut self, conn_id: usize) {
+        if let Some(conn) = self.conns.get_mut(&conn_id) {
+            conn.try_close();
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
