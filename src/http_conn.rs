@@ -110,7 +110,7 @@ impl HttpConnBlockingClient {
     pub fn connect(uri: Uri) -> Result<Self, HttpConnError> {
         let stream = AnyStreamBuilder {
             stream: TcpStream::connect(uri.host_and_port()?)?,
-            proxy: false,
+            proxy_protocol: false,
             tls_client: match uri.is_tls()? {
                 true => Some(uri.host()?.into()),
                 false => None,
@@ -150,7 +150,7 @@ impl HttpConnClient {
     pub fn connect(uri: Uri) -> Result<Self, HttpConnError> {
         let stream = AnyStreamBuilder {
             stream: net::tcp::connect(uri.host_and_port()?)?,
-            proxy: false,
+            proxy_protocol: false,
             tls_client: match uri.is_tls()? {
                 true => Some(uri.host()?.into()),
                 false => None,
@@ -235,7 +235,7 @@ impl HttpConnServer {
     ) -> std::io::Result<HttpConnServer> {
         let stream = AnyStreamBuilder {
             stream,
-            proxy: true,
+            proxy_protocol: true,
             tls_client: None,
             tls_server: tls_cfg,
         }
