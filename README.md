@@ -1,6 +1,6 @@
 # Net Http Library
 
-[![License](https://img.shields.io/badge/license-Apache-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache2-green.svg)](LICENSE)
 
 
 Welcome to net-http, a comprehensive and nonblocking HTTP library for Rust. Specifically designed to support both std and tstd environments, net-http ensures seamless functionality for HTTP(S) and WebSocket (WS/S) clients and servers.
