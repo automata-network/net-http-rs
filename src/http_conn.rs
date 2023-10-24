@@ -128,7 +128,7 @@ impl HttpConnBlockingClient {
     ) -> Result<HttpResponse, HttpConnError> {
         let msg = req.parse_msg();
         self.stream.write_all(&msg)?;
-        for _ in 0..10000 {
+        for _ in 0..100000 {
             self.stream.set_read_timeout(timeout)?;
             let response = HttpResponse::read_from(
                 &mut self.stream,
