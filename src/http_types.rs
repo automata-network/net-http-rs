@@ -355,6 +355,21 @@ pub struct HttpResponse {
     pub body: Vec<u8>,
 }
 
+fn wrap_err<T: std::fmt::Debug>(result: Result<T, std::io::Error>) -> Result<T, std::io::Error> {
+    match result {
+        Ok(n) => Ok(n),
+        Err(err) if err.kind() == ErrorKind::WouldBlock => {
+            let err = if err.to_string().contains("Resource deadlock avoided") {
+                std::io::Error::new(ErrorKind::UnexpectedEof, err)
+            } else {
+                err
+            };
+            Err(err)
+        }
+        Err(err) => Err(err),
+    }
+}
+
 impl HttpResponse {
     pub fn read_from<R>(
         stream: &mut R,
@@ -368,7 +383,7 @@ impl HttpResponse {
         loop {
             match state {
                 HttpResponseReadState::Empty => {
-                    match header_buffer.fill_with(stream) {
+                    match wrap_err(header_buffer.fill_with(stream)) {
                         Ok(_) => {}
                         Err(err) if err.kind() == ErrorKind::WouldBlock => {
                             if header_buffer.len() == 0 {
@@ -455,7 +470,7 @@ impl HttpResponse {
                     }
                 }
                 HttpResponseReadState::ReadChunkedBody(_, chunks) => {
-                    match header_buffer.fill_with(stream) {
+                    match wrap_err(header_buffer.fill_with(stream)) {
                         Ok(_) => {}
                         Err(err) if err.kind() == ErrorKind::WouldBlock => {}
                         Err(e) => {
@@ -489,25 +504,27 @@ impl HttpResponse {
                         ChunksReadState::NotChunked => unreachable!(),
                     }
                 }
-                HttpResponseReadState::ReadBody(_, buf) => match buf.fill_all_with(stream) {
-                    Ok(_) => match state.swap_to_empty() {
-                        HttpResponseReadState::ReadBody(response, buf) => {
-                            return Ok(Some(HttpResponse {
-                                headers: response.headers().clone(),
-                                status: response.status_code(),
-                                body: buf.to_vec(),
-                            }))
+                HttpResponseReadState::ReadBody(_, buf) => {
+                    match wrap_err(buf.fill_all_with(stream)) {
+                        Ok(_) => match state.swap_to_empty() {
+                            HttpResponseReadState::ReadBody(response, buf) => {
+                                return Ok(Some(HttpResponse {
+                                    headers: response.headers().clone(),
+                                    status: response.status_code(),
+                                    body: buf.to_vec(),
+                                }))
+                            }
+                            _ => unreachable!(),
+                        },
+                        Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                            return Ok(None);
                         }
-                        _ => unreachable!(),
-                    },
-                    Err(err) if err.kind() == ErrorKind::WouldBlock => {
-                        return Ok(None);
+                        Err(e) => {
+                            glog::error!("read response error: {:?}", e);
+                            return Err(HttpError::ReadEOF);
+                        }
                     }
-                    Err(e) => {
-                        glog::error!("read response error: {:?}", e);
-                        return Err(HttpError::ReadEOF);
-                    }
-                },
+                }
             }
         }
     }

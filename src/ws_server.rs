@@ -37,6 +37,7 @@ pub struct HttpWsServerConfig {
     pub tls_key: Vec<u8>,
     pub frame_size: usize,
     pub http_max_body_length: Option<usize>,
+    pub max_idle_secs: Option<usize>,
 }
 
 impl<H: HttpWsServerHandler> HttpWsServer<H> {
@@ -54,6 +55,7 @@ impl<H: HttpWsServerHandler> HttpWsServer<H> {
                 listen_addr: cfg.listen_addr.clone(),
                 tls_cert: cfg.tls_cert.clone(),
                 tls_key: cfg.tls_key.clone(),
+                max_idle_secs: cfg.max_idle_secs.clone(),
             },
             handler,
         )?;
@@ -102,14 +104,15 @@ struct WsHandler<H: HttpWsServerHandler> {
 
 impl<H: HttpWsServerHandler> HttpServerHandler for WsHandler<H> {
     fn on_new_http_request(&mut self, ctx: &mut HttpServerContext, mut req: HttpRequestReader) {
-        // glog::info!("on new http request");
         // TODO: can we have a fast path?
         match crate::get_websocket_ctx(&mut req) {
             Ok(Some(wsctx)) => {
+                glog::debug!(target:"net-debug", "on new ws handshake: {:?}", &req.method());
                 self.pending_conn_ids
                     .push((ctx.conn_id, req.path().to_owned(), wsctx));
             }
             Ok(None) => {
+                glog::debug!(target:"net-debug", "on new http request: {:?}", &req.method());
                 self.handler.on_new_http_request(ctx, req);
             }
             Err(err) => {
@@ -151,6 +154,7 @@ impl<H: HttpWsServerHandler> WsHandler<H> {
                                     path: &path,
                                     is_close: false,
                                 };
+                                glog::debug!(target:"net-debug", "on new ws request");
                                 self.handler.on_new_ws_conn(&mut ctx);
                                 if ctx.is_close {
                                     self.conns.remove(conn_id);

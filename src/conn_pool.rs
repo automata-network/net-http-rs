@@ -1,23 +1,29 @@
+use core::time::Duration;
 use std::prelude::v1::*;
 
 use std::sync::{Arc, Mutex};
 
+use base::time::Time;
+
 #[derive(Default, Debug)]
 pub struct ConnPool<T> {
-    list: Arc<Mutex<Vec<T>>>,
+    idle_time: Option<Duration>,
+    list: Arc<Mutex<Vec<(T, Time)>>>,
 }
 
 impl<T> Clone for ConnPool<T> {
     fn clone(&self) -> Self {
         Self {
+            idle_time: self.idle_time.clone(),
             list: self.list.clone(),
         }
     }
 }
 
 impl<T> ConnPool<T> {
-    pub fn new() -> Self {
+    pub fn new(idle_time: Option<Duration>) -> Self {
         Self {
+            idle_time,
             list: Default::default(),
         }
     }
@@ -37,14 +43,22 @@ impl<T> ConnPool<T> {
 
     pub fn pop(&self) -> Option<ConnPoolGuard<T>> {
         let mut list = self.list.lock().unwrap();
-        list.pop()
-            .map(|item| ConnPoolGuard::new(self.list.clone(), item, true))
+        loop {
+            let (item, create_time) = list.pop()?; 
+            if let Some(timeout) = &self.idle_time {
+                if Time::now() - create_time >= *timeout {
+                    continue;
+                }
+            }
+            return Some(ConnPoolGuard::new(self.list.clone(), item, true));
+        }
     }
 }
 
 pub struct ConnPoolGuard<T> {
+    create_time: Time,
     reused: bool,
-    list: Arc<Mutex<Vec<T>>>,
+    list: Arc<Mutex<Vec<(T, Time)>>>,
     raw: Option<T>,
     drop: bool,
 }
@@ -63,9 +77,10 @@ impl<T> std::ops::DerefMut for ConnPoolGuard<T> {
 }
 
 impl<T> ConnPoolGuard<T> {
-    pub fn new(list: Arc<Mutex<Vec<T>>>, item: T, reused: bool) -> Self {
+    pub fn new(list: Arc<Mutex<Vec<(T, Time)>>>, item: T, reused: bool) -> Self {
         Self {
             list,
+            create_time: Time::now(),
             raw: Some(item),
             drop: true,
             reused,
@@ -85,7 +100,7 @@ impl<T> Drop for ConnPoolGuard<T> {
     fn drop(&mut self) {
         if !self.drop {
             match self.raw.take() {
-                Some(item) => self.list.lock().unwrap().push(item),
+                Some(item) => self.list.lock().unwrap().push((item, self.create_time)),
                 None => {}
             }
         }

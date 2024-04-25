@@ -11,6 +11,7 @@ use std::time::Duration;
 
 #[derive(Debug)]
 pub struct HttpClient {
+    idle_time: Option<Duration>,
     conns: Mutex<BTreeMap<String, ConnPool<HttpConnBlockingClient>>>,
 }
 
@@ -18,6 +19,7 @@ impl HttpClient {
     pub fn new() -> Self {
         Self {
             conns: Mutex::new(BTreeMap::new()),
+            idle_time: Some(Duration::from_secs(10)),
         }
     }
 
@@ -31,7 +33,7 @@ impl HttpClient {
             let mut conns = self.conns.lock().unwrap();
             conns
                 .entry(conn_key)
-                .or_insert_with(|| ConnPool::new())
+                .or_insert_with(|| ConnPool::new(self.idle_time))
                 .clone()
         };
         let deadline = dur.map(|dur| Time::now() + dur);
@@ -44,7 +46,8 @@ impl HttpClient {
                     return Err(HttpConnError::Timeout);
                 }
             }
-            let response = match conn.send(req, timeout) {
+            let result = conn.send(req, timeout);
+            let response = match result {
                 Ok(response) => response,
                 Err(HttpConnError::WouldBlock) => {
                     // blocking should not have would block

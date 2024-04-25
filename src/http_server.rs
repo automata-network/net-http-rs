@@ -17,6 +17,7 @@ pub struct HttpServerConfig {
     pub tls_cert: Vec<u8>,
     pub tls_key: Vec<u8>,
     pub max_body_length: Option<usize>,
+    pub max_idle_secs: Option<usize>,
 }
 
 pub struct HttpServerContext {
@@ -139,11 +140,12 @@ impl<H: HttpServerHandler> HttpServer<H> {
     }
 
     fn tick_accept(&mut self) -> std::io::Result<usize> {
-        // let _trace = crate::trace::Slowlog::new_ms("accept conns", 100);
+        let _trace = base::trace::Slowlog::new_ms("accept conns", 100);
         let mut accpeted = 0;
         loop {
             match self.listener.accept() {
                 Ok((stream, _)) => {
+                    glog::debug!(target: "net-debug", "accept conn, total: {}", self.conns.len()+1);
                     let conn = HttpConnServer::accept(
                         stream,
                         self.tls_cfg.clone(),
@@ -162,10 +164,11 @@ impl<H: HttpServerHandler> HttpServer<H> {
     }
 
     fn tick_read(&mut self) -> TickResult {
-        // let _trace = crate::trace::Slowlog::new_ms("accept http requests", 100);
+        let _trace = base::trace::Slowlog::new_ms("accept http requests", 100);
         let mut tick = TickResult::Idle;
         let mut remove_conn = Vec::new();
         for (conn_id, conn) in &mut self.conns.conns {
+            glog::debug!(target:"net-debug", "try read request");
             match conn.read_request() {
                 Ok(Some(http_req)) => {
                     let mut ctx = HttpServerContext {
@@ -187,6 +190,7 @@ impl<H: HttpServerHandler> HttpServer<H> {
                     tick.to_busy();
                 }
             };
+            // glog::debug!(target:"net-debug", "done read request");
         }
         for conn_id in remove_conn {
             self.conns.remove_conn(conn_id);
@@ -196,7 +200,7 @@ impl<H: HttpServerHandler> HttpServer<H> {
     }
 
     pub fn tick(&mut self) -> TickResult {
-        // let _trace = crate::trace::Slowlog::new_ms("HttpServer.tick()", 100);
+        let _trace = base::trace::Slowlog::new_ms("HttpServer.tick()", 100);
         let mut tick = match self.tick_accept() {
             Ok(0) => TickResult::Idle,
             Ok(_) => TickResult::Busy,
@@ -204,6 +208,7 @@ impl<H: HttpServerHandler> HttpServer<H> {
         };
         tick |= self.tick_read();
         tick |= self.handler.on_tick(&mut self.conns);
+        // tick |= self.tick_remove_idle_conn(&mut self.conns);
         tick
     }
 

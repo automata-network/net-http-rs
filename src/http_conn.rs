@@ -9,7 +9,7 @@ use rustls::ServerConfig;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub type TlsServerConfig = Arc<ServerConfig>;
 
@@ -70,7 +70,7 @@ pub struct HttpConn<T> {
     inflight_id: Vec<usize>,
     max_body_length: Option<usize>,
     marker: std::marker::PhantomData<T>,
-    // last_msg: Instant,
+    last_recv_msg: Instant,
     closed: bool,
     request_cnt: usize,
 }
@@ -91,7 +91,7 @@ impl<T> HttpConn<T> {
             inflight_id: Vec::new(),
             max_body_length,
             marker: std::marker::PhantomData,
-            // last_msg: Instant::now(),
+            last_recv_msg: Instant::now(),
             request_cnt: 0,
             closed: false,
         }
@@ -128,8 +128,8 @@ impl HttpConnBlockingClient {
     ) -> Result<HttpResponse, HttpConnError> {
         let msg = req.parse_msg();
         self.stream.write_all(&msg)?;
+        self.stream.set_read_timeout(timeout)?;
         for _ in 0..100000 {
-            self.stream.set_read_timeout(timeout)?;
             let response = HttpResponse::read_from(
                 &mut self.stream,
                 &mut self.header_buffer,
@@ -265,6 +265,7 @@ impl HttpConnServer {
         )?;
         if req.is_some() {
             self.inflight_id.push(0);
+            self.last_recv_msg = Instant::now();
         }
         Ok(req)
     }
@@ -277,6 +278,10 @@ impl HttpConnServer {
         self.inflight_id.pop();
         self.request_cnt += 1;
         Ok(())
+    }
+
+    pub fn idle_time(&self) -> Duration {
+        self.last_recv_msg.elapsed()
     }
 }
 
