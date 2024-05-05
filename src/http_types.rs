@@ -69,6 +69,7 @@ pub enum HttpError {
     ParseResponseError(String),
     InvalidResponse,
     BodyTooLarge,
+    HeaderTooLarge(usize),
 }
 pub struct HttpRequestReaderEx<'a> {
     srs: SRS<Vec<u8>, HttpRequestReaderRef<'a>>,
@@ -239,9 +240,10 @@ impl<'a> HttpRequestReaderEx<'a> {
                             None => {}
                         };
                         if header_buffer.write().len() == 0 {
-                            glog::info!("body: {}", String::from_utf8_lossy(header_buffer.read()));
-                            // buffer size too small;
-                            unreachable!();
+                            glog::error!("body: {}", String::from_utf8_lossy(header_buffer.read()));
+                            glog::error!("unexpected body size: {}", header_buffer.len());
+                            // header buffer size too small;
+                            return Err(HttpError::HeaderTooLarge(header_buffer.len()));
                         }
                         match stream.read(header_buffer.write()) {
                             Ok(0) => return Err(HttpError::ReadEOF),
